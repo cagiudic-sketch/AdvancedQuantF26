@@ -44,3 +44,9 @@ Survival_HeightApril26Blocks7_6Clean<- Survival_HeightApril26Blocks7_6Clean |>
 head(Survival_HeightApril26Blocks7_6Clean)
 
 ```
+
+Summarize data
+
+```{r}
+str(Survival_HeightApril26Blocks7_6Clean)
+```
