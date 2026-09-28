@@ -1,0 +1,290 @@
+---
+title: "Keycode"
+output: html_document
+date: "2026-02-25"
+---
+## Packages
+```{r setup, include=FALSE}
+library(httr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(SciViews)
+library(patchwork)
+library(httr)
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(rstatix)
+library(RColorBrewer)
+library(forcats)
+library(lubridate)
+library(readr)
+library(stringr)
+library(purrr)
+library(jsonlite)
+library(dplyr)
+library(lubridate)
+library(tidyr)
+```
+
+## Joining/organizing Dataframes
+
+```{r}
+#left join (keep everything in left data frame, discard non-matches)
+dfmerge<- dfx%>%
+  left_join(dfy, by = c("category"))
+
+#stack data frames
+stackeddfs<- bind_rows(df1, df2)
+
+#change column locations
+ df<- df%>%
+   relocate(Site, .after=1)
+ 
+ #pivot long or wide
+ df_long<- df%>%
+  pivot_longer(cols= c(daily_avgT, flow_cfs, lnflow), #put columns into one
+               names_to= "Variable",
+               values_to= "Value")
+ 
+ 
+```
+
+## Cleaning data
+
+```{r}
+#change names of values
+df<- df%>%
+  mutate(category= case_when(category== "oldname"~"newname", TRUE ~ category))
+
+#reorganize columns .after or .before
+relocate(COMID, .after = Subbasin)
+```
+
+## Days summary
+```{r}
+#days in month
+df<- df%>%
+  mutate(year_month= floor_date(Date, "month"))%>%
+           group_by(Site, year_month)%>%
+           mutate(days_in_month = n_distinct(day(Date)))%>%
+           ungroup()%>%
+           select(-year_month)
+
+#mean days in month
+df_mean<- df%>%
+  select(Year, month_year, days_in_month, Month, Site)%>%
+  group_by(Year, month_year, Month, Site)%>%
+  summarize(mean_days= mean(days_in_month), na.rm=TRUE)
+
+
+#add season
+df<- df%>%
+  mutate(Season = case_when(Month %in% c("12", "1", "2")~ "Winter",
+                            Month %in% c("3","4","5")~ "Spring",
+                            Month %in% c("6","7","8")~ "Summer",
+                            Month %in% c("9","10","11")~ "Fall"))
+
+#level seasons for graphs
+SFER_tempnew$Season <- fct_relevel(SFER_tempnew$Season, "Spring", "Summer", "Fall", "Winter")
+levels(SFER_tempnew$Season)
+
+#days in year
+df_sum <- df %>%
+  group_by(Site, Year) %>%
+  summarize(days_in_year =  n_distinct(Date[!is.na(Date)])) %>%
+  ungroup()
+
+#mutate creates new row, summarize creates new simplified df
+
+#summarize months in year
+df<- df%>%
+  mutate(Month= month(Date))%>%
+  group_by(Site, Year)%>%
+  mutate(months_in_year= n_distinct(Month))%>%
+  ungroup()
+
+#summary data table
+df<- df%>%
+  select(Year, Month_name, days_in_month, months_in_year, Site)%>%
+  group_by(Year, Site)%>%
+  summarize(total_days= max(days_in_month), na.rm=TRUE, total_months = max(months_in_year))
+
+df_table<- df%>%
+  select(Year, Site, total_days, total_months)%>%
+  rename(Total_days = total_days,
+         Total_months = total_months)
+
+knitr::kable(df_table)
+
+```
+
+## Dates
+
+```{r}
+df$Date <- as.Date(df$Date)
+
+df$Year<- format(as.Date(df$Date, format= "m%/%d/%Y"), "%Y")
+
+df$Month<- format(as.Date(df$Date, format= "m%/%d/%Y"), "%b")
+
+df<- df%>%
+  mutate(wateryr_start= make_date(year= Year-1, month= 10, day= 01))
+
+#date time
+df$Date_time <- as.POSIXct(
+  df$Date_time,
+  format = "%Y-%m-%d %H:%M:%S",
+  tz = "UTC")
+
+#month year
+df$month_year <- format(df$Date, "%b %Y")
+
+#order by month year
+df$month_year <- factor(
+  df$month_year,
+  levels = unique(df$month_year)
+)
+
+```
+
+## Graphs
+
+
+Histogram
+```{r}
+ggplot(RAW_temp2, aes(x= Temp))+
+  geom_histogram( fill="grey", color= "black")+
+  facet_wrap(Water_level~.)+
+  labs(x= "Daily Temp",
+       y= "Count")
+```
+
+Tempflow timeseries
+```{r}
+#flow cfs vs temp 
+make_flow <- function(df, site_name) {
+
+  p_temp <- ggplot(df, aes(x = Date)) +
+    geom_line(
+      aes(y = Temp, group=1, color = Water_level),
+      size = 0.5,
+      alpha = 0.8
+    ) +
+    scale_color_manual(
+      name = "Logger Status",
+      values = c(
+        "DRY" = "#FCCCBD",
+        "WET" = "#487BE0",
+        "UNK" = "grey"
+      )
+    ) +
+    labs(
+      y = "Temperature (°C)",
+      title = paste("Daily Temperature and Flow in", site_name)
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(hjust = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y= element_text(size=10.5),
+      text = element_text(family = "Helvetica")
+    )
+    
+  p_flow <- ggplot(df, aes(x = Date)) +
+    geom_line(
+      aes(y = flow_cfs, group=1, color= flow_status),
+      size = 0.5
+    ) +
+
+    scale_x_date(
+      date_labels = "%b %Y",
+      date_breaks = "1 month",
+      expand = c(0, 0)
+    ) +
+    scale_color_manual(
+      name = "Modeled Flow Status",
+      values = c(
+        "Less than 0.1 cfs" = "#E6AC15",
+        "Greater than 0.1 cfs" = "#138ECF"))+
+    labs(
+      x = "Month Year",
+      y = "Daily Flow (cfs)"
+    ) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(size=7, angle = 60, hjust = 1),
+      axis.title.y= element_text(size=10.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      text = element_text(family = "Helvetica")
+    )
+
+  p_temp / p_flow + plot_layout(heights = c(2, 1))
+}
+
+plot<- imap(site_list, make_flow)
+
+plot
+```
+
+Heat map
+```{r}
+#month reorder
+df$Month <- factor(
+  df$Month,
+  levels = c("Jan","Feb","Mar","Apr","May","Jun",
+             "Jul","Aug","Sep","Oct","Nov","Dec")
+)
+
+ggplot(df,
+       aes(x = Month,
+           y = Site,
+           fill = mean_days)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "blue") +
+  
+  # Show first letter of month only
+  scale_x_discrete(
+    labels = substr(levels(df$Month), 1, 1)
+  ) +
+  # October line (10th month)
+ geom_vline(aes(xintercept = 10,
+                 linetype = "Water Year"),
+             linewidth = 0.6,
+             color = "#62C0D9") +
+  scale_linetype_manual(
+    name = NULL,
+    values = c("Water Year" = "dashed")
+  ) +
+  facet_wrap(~Year, ncol = 4) +
+  
+  theme(
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_blank()
+  ) +
+  labs(title = "Mean Wet Days Recorded per Month, ",
+       y = "Site",
+       fill = "Days Recorded")
+```
+
+Check for non-matches in two df
+```{r}
+missing_comidtemp<- newtempsites%>%
+  anti_join(downstreamcomid, by =  "COMID")
+```
+
+Filter for values that only appear in another df
+```{f}
+lspc_current_filtered<- lspc_current %>%
+  filter(paste(Subbasin, COMID) %in% paste(temp_sites$Subbasin, temp_sites$COMID))
+```
+
+
