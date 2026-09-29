@@ -11,6 +11,8 @@ library(tidyverse)
 
 library(readxl)
 library(ggplot2)
+install.packages("plyr")
+library(plyr)
 
 #import the correct sheet/excel
 Survival_HeightApril26Blocks7_6Clean <- read_excel("Oak Project/Data/Survival_HeightApril26Blocks7&6Clean.xlsx", 
@@ -18,6 +20,17 @@ Survival_HeightApril26Blocks7_6Clean <- read_excel("Oak Project/Data/Survival_He
 View(Survival_HeightApril26Blocks7_6Clean)
 
 names(Survival_HeightApril26Blocks7_6Clean)
+
+#import the rest of the data
+oak_data<- list.files(path= "Oak Project/Data",
+                      pattern= "6Clean.xlsx",
+                      full.names=TRUE) |> 
+  lapply(read_excel,
+         na= "NA", sheet= "Input1", skip=1) |> 
+  bind_rows()
+
+oak_data
+
 ```
 
 Rename rows
@@ -139,4 +152,126 @@ Survival_HeightApril26Blocks7_6Clean |>
 #29 seedlings survived, 8 did not, 78% survival
 
 29/(8+29)
+```
+
+### All data from all sheets
+
+```{r}
+library(tidyverse)
+
+#add dplyr to deprecate plyr and call tidyverse function instead
+oak_data<- oak_data |> 
+  dplyr::rename(Date= "MM/DD/YYYY",
+         Page_Number = "Page #",
+         Recorder=  "Name",
+         Block= "#...4",
+         Tag_Num=  "#...5",
+         Oak_type=  "NR, S, or A",
+         Treatment= "AC, OA, NP, DT, or DL",
+         OA_microclimate= "TH, TI, CN",
+         Seedling_Ht_cm= "(cm)",
+         Num_leaves=  "#...10",
+         Num_dead_leaves= "#...11",
+         Leaf_greenness=  "%",
+         Num_germinated= "#...13",
+         RCD=  "(mm)",
+         Notes= "as written on data sheet")
+
+detach("package:plyr", unload = TRUE)
+
+ unique(oak_data$Block)
+ 
+ #missing block 3
+```
+
+Convert to numeric
+
+```{r}
+
+oak_data<-  oak_data |> 
+  mutate(Seedling_Ht_cm = as.numeric(Seedling_Ht_cm)) |> 
+  mutate(Num_leaves = as.numeric(Num_leaves)) |> 
+  mutate(Num_dead_leaves = as.numeric(Num_dead_leaves))|> 
+  mutate(Leaf_greenness = as.numeric(Leaf_greenness)) |> 
+  mutate(Num_germinated= as.numeric(Num_germinated)) |> 
+  mutate(RCD=as.numeric(RCD))
+```
+
+Number germinated column (should just be one seedling per row)
+
+Whether tag number aligns with \# germinated, tag #= plot #, needs to have plant \# instead (split tag #)
+
+```{r}
+
+#take one column per acorn num and tag num
+oak_data_clean<- oak_data |>    separate(Tag_Num, into = c("Tag_Num", "Acorn_Num"), sep= "A") |> mutate(Tag_Num= as.numeric(Tag_Num),
+             Acorn_Num= as.numeric(Acorn_Num)) |> 
+  #mutate(Seedling_Ht_cm= case_when(Seedling_Ht_cm =NA ~0)) |> 
+  mutate(Dead= case_when(Seedling_Ht_cm == 0 ~ "Dead",
+                         Seedling_Ht_cm >0 ~ "Alive"))
+
+
+```
+
+```{r}
+oak_data_clean |>  
+  select(Tag_Num, Acorn_Num,  Block, Treatment, OA_microclimate) |>  
+  distinct() |> 
+  arrange(Tag_Num)
+
+#test to see if we can make empty rows for non-germinated acorns
+Acorn_ID_Table<- oak_data_clean |> 
+  select(Tag_Num, Block, Treatment, OA_microclimate, Date, Seedling_Ht_cm) |> 
+  distinct() |> 
+  arrange(Tag_Num) |> 
+  mutate(Acorn1=1, Acorn2=2, Acorn3=3) |> 
+  pivot_longer(cols= c(Acorn1, Acorn2, Acorn3), names_to= "whatever", "values_to"= "Acorn_Num") |> 
+  select(-whatever)
+
+oak_data_clean2<- oak_data_clean |> select(-Acorn_Num) |> full_join(Acorn_ID_Table) |> 
+  relocate(Acorn_Num, .after = Tag_Num)
+```
+
+Quick sum
+
+```{r}
+ggplot(oak_data_clean) + 
+  aes(x = Seedling_Ht_cm) +
+  geom_histogram()
+
+ggplot(oak_data_clean) + 
+  aes(x = Num_leaves) +
+  geom_histogram()
+
+ggplot(oak_data_clean) + 
+  aes(x = Num_dead_leaves) +
+  geom_histogram()
+
+ggplot(oak_data_clean) + 
+  aes(x = Leaf_greenness) +
+  geom_histogram()
+
+ggplot(oak_data_clean) + 
+  aes(x = Num_germinated) +
+  geom_histogram()
+
+ggplot(oak_data_clean) + 
+  aes(x = RCD) +
+  geom_histogram()
+
+# Create a summary table
+oak_data_clean_summarytbl <- oak_data_clean |> 
+  group_by(Oak_type, Treatment) |> 
+  summarize(
+    n = n(), 
+    min_SeedHt= min(Seedling_Ht_cm,na.rm=TRUE),
+    mean_SeedHt = mean(Seedling_Ht_cm, na.rm=TRUE), 
+    max_SeedHt= max(Seedling_Ht_cm, na.rm=TRUE),
+    SD_SeedHt = sd(Seedling_Ht_cm, na.rm=TRUE)) 
+```
+
+Bar graphs for height across treatments
+
+```{r}
+
 ```
