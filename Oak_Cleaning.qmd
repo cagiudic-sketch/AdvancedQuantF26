@@ -11,7 +11,7 @@ library(tidyverse)
 
 library(readxl)
 library(ggplot2)
-install.packages("plyr")
+#install.packages("plyr")
 library(plyr)
 
 #import the correct sheet/excel
@@ -273,5 +273,42 @@ oak_data_clean_summarytbl <- oak_data_clean |>
 Bar graphs for height across treatments
 
 ```{r}
+ggplot(oak_data_clean_summarytbl) +
+  aes(x = Oak_type, y= mean_SeedHt, fill= Treatment) + 
+  labs(x = "Oak type", y= "Mean Seedling Height (cm)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_col(color= "#071A0B")
+```
 
+Box plot across treatments
+
+```{r}
+
+ggplot(oak_data_clean) +
+  aes(x = Oak_type, y= Seedling_Ht_cm, fill= Treatment) + 
+  labs(x = "Oak type", y= "Seedling Height (cm)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_boxplot(color= "#071A0B", outlier.colour = "red")
+```
+
+Import october data
+
+```{r}
+
+Survival_HeightOct2025Clean <- read_excel("Oak Project/Data/Survival_HeightOct2025Clean.xlsx", 
+    sheet = "Input1")
 ```
