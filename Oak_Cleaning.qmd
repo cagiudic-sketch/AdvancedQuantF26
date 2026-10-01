@@ -11,7 +11,7 @@ library(tidyverse)
 
 library(readxl)
 library(ggplot2)
-install.packages("plyr")
+#install.packages("plyr")
 library(plyr)
 
 #import the correct sheet/excel
@@ -235,32 +235,36 @@ oak_data_clean2<- oak_data_clean |> select(-Acorn_Num) |> full_join(Acorn_ID_Tab
 Quick sum
 
 ```{r}
-ggplot(oak_data_clean) + 
+
+oak_data_clean2<- oak_data_clean |> 
+  filter(Seedling_Ht_cm>0)
+
+ggplot(oak_data_clean2) + 
   aes(x = Seedling_Ht_cm) +
   geom_histogram()
 
-ggplot(oak_data_clean) + 
+ggplot(oak_data_clean2) + 
   aes(x = Num_leaves) +
   geom_histogram()
 
-ggplot(oak_data_clean) + 
+ggplot(oak_data_clean2) + 
   aes(x = Num_dead_leaves) +
   geom_histogram()
 
-ggplot(oak_data_clean) + 
+ggplot(oak_data_clean2) + 
   aes(x = Leaf_greenness) +
   geom_histogram()
 
-ggplot(oak_data_clean) + 
+ggplot(oak_data_clean2) + 
   aes(x = Num_germinated) +
   geom_histogram()
 
-ggplot(oak_data_clean) + 
+ggplot(oak_data_clean2) + 
   aes(x = RCD) +
   geom_histogram()
 
 # Create a summary table
-oak_data_clean_summarytbl <- oak_data_clean |> 
+oak_data_clean_summarytbl <- oak_data_clean2 |> 
   group_by(Oak_type, Treatment) |> 
   summarize(
     n = n(), 
@@ -273,5 +277,119 @@ oak_data_clean_summarytbl <- oak_data_clean |>
 Bar graphs for height across treatments
 
 ```{r}
+ggplot(oak_data_clean_summarytbl) +
+  aes(x = Oak_type, y= n, fill= Treatment) + 
+  labs(x = "Oak type", y= "Count") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_col(color= "#071A0B")
+#drop seedlings
+#NR and dripline, check if acorn had dripline treatment
+```
+
+```{r}
+library(ggplot2)
+ggplot(oak_data_clean_summarytbl) +
+  aes(x = Oak_type, y= mean_SeedHt, fill= Treatment) + 
+  labs(x = "Oak type", y= "Mean Seedling Height (cm)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_col(color= "#071A0B", position= "dodge")
+
 
 ```
+
+Box plot across treatments
+
+```{r}
+#all data
+ggplot(oak_data_clean) +
+  aes(x = Oak_type, y= Seedling_Ht_cm, fill= Treatment) + 
+  labs(x = "Oak type", y= "Seedling Height (cm)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_boxplot(color= "#071A0B", outlier.colour = "red")
+
+#minus 0's
+ggplot(oak_data_clean2) +
+  aes(x = Oak_type, y= Seedling_Ht_cm, fill= Treatment) + 
+  labs(x = "Oak type", y= "Seedling Height (cm)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("A" = "Acorn", 
+                              "NR" = "Natural Recruit", 
+                              "S" = "Seedling"))+
+  geom_boxplot(color= "#071A0B", outlier.colour = "red")
+```
+
+Import october data
+
+```{r}
+
+Survival_HeightOct2025Clean <- read_excel("Oak Project/Data/Survival_HeightOct2025Clean.xlsx", 
+    sheet = "Input1")
+```
+
+Correlation between seedling height and number leaves
+
+```{r}
+
+unique(oak_data_clean2$Leaf_greenness)
+
+ggplot(oak_data_clean2)+
+  aes(x= Num_leaves, y=Seedling_Ht_cm, color= Leaf_greenness)+
+  scale_color_gradient(low="yellow", high="darkgreen")+
+  labs(x= "Number of Leaves", y= "Seedling Height (cm)", color= "Leaf Greenness")+
+  geom_point()
+```
+
+### Questions: How treatment is affecting 1) seedling height, 2) survival, 3) greenness and 4) germination rate (each tag once, last time only)?
+
+Microclimate: DT, AC, OA
+
+All 4 responses
+
+In which microclimates were plants healthiest?
+
+Do planted acorns have similar success to NR?
+
+For each question, which data can we use or need to exclude to answer the question?
+
+Are all time points necessary? Best visualization?
+
+1\) Seedling Height & greenness- Focus on focal treatments, can take into account germination date/age, acorns vs. NR analyze separately (growth rate) overtime
+
+- Acorns at end, NR over time
+
+- Remove NAs and 0s
+
+2\) Seedling survival- each tag once, over time or at end
+
+- Remove NRs, only acorns
+
+- Drop NAs (non-germinated), dead v alive v NA?
+
+- Mystery cleaning, logistic regression (y= dead or alive, x= quantitative, 0-100)
+
+3\)

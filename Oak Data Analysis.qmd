@@ -1,0 +1,27 @@
+---
+title: "Oak Data Analysis"
+format: html
+editor: visual
+---
+
+## Germination Rate
+
+Focus on acorn germination rate for each tag once and only the most recent record
+
+```{r}
+library(tidyverse)
+
+library(readxl)
+library(ggplot2)
+#install.packages("plyr")
+library(plyr)
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
