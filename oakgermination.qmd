@@ -1,0 +1,85 @@
+---
+title: "GerminationRateOak"
+format: html
+editor: visual
+---
+
+## Import data
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+#install.packages("plyr")
+#library(plyr)
+
+#import all data
+oak_data<- list.files(path= "Oak Project/Data",
+                      pattern= "6Clean.xlsx",
+                      full.names=TRUE) |> 
+  lapply(read_excel,
+         na= "NA", sheet= "Input1", skip=1) |> 
+  bind_rows()
+
+oak_data<- oak_data |> 
+  dplyr::rename(Date= "MM/DD/YYYY",
+         Page_Number = "Page #",
+         Recorder=  "Name",
+         Block= "#...4",
+         Tag_Num=  "#...5",
+         Oak_type=  "NR, S, or A",
+         Treatment= "AC, OA, NP, DT, or DL",
+         OA_microclimate= "TH, TI, CN",
+         Seedling_Ht_cm= "(cm)",
+         Num_leaves=  "#...10",
+         Num_dead_leaves= "#...11",
+         Leaf_greenness=  "%",
+         Num_germinated= "#...13",
+         RCD=  "(mm)",
+         Notes= "as written on data sheet")
+
+#oct 2025 data
+
+Survival_HeightOct2025Clean <- read_excel("Oak Project/Data/Survival_HeightOct2025Clean.xlsx", 
+    sheet = "Input1")
+```
+
+Convert to numeric and separate acorn and tag numbers
+
+```{r}
+
+oak_data<-  oak_data |> 
+  mutate(Seedling_Ht_cm = as.numeric(Seedling_Ht_cm)) |> 
+  mutate(Num_leaves = as.numeric(Num_leaves)) |> 
+  mutate(Num_dead_leaves = as.numeric(Num_dead_leaves))|> 
+  mutate(Leaf_greenness = as.numeric(Leaf_greenness)) |> 
+  mutate(Num_germinated= as.numeric(Num_germinated)) |> 
+  mutate(RCD=as.numeric(RCD))
+
+#take one column per acorn num and tag num
+oak_data_clean<- oak_data |>    separate(Tag_Num, into = c("Tag_Num", "Acorn_Num"), sep= "A") |> mutate(Tag_Num= as.numeric(Tag_Num),
+             Acorn_Num= as.numeric(Acorn_Num)) |> 
+  #mutate(Seedling_Ht_cm= case_when(Seedling_Ht_cm =NA ~0)) |> 
+  mutate(Dead= case_when(Seedling_Ht_cm == 0 ~ "Dead",
+                         Seedling_Ht_cm >0 ~ "Alive"))
+```
+
+**Total number of acorns should be 3 per tag number**
+
+Filter for acorns only
+
+```{r}
+acorn_data<- oak_data_clean |> 
+  filter(Oak_type== "A")
+
+#filter for the most recent tag observation
+
+
+```
+
+Calculate germination rate per treatment
+
+```{r}
+# num_germinated/3. NAs= 0 germinated
+
+```

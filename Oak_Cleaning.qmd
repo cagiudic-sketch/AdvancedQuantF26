@@ -380,16 +380,22 @@ Are all time points necessary? Best visualization?
 
 1\) Seedling Height & greenness- Focus on focal treatments, can take into account germination date/age, acorns vs. NR analyze separately (growth rate) overtime
 
-- Acorns at end, NR over time
+-   Acorns at end, NR over time
 
-- Remove NAs and 0s
+-   Remove NAs and 0s
 
 2\) Seedling survival- each tag once, over time or at end
 
-- Remove NRs, only acorns
+-   Remove NRs, only acorns
 
-- Drop NAs (non-germinated), dead v alive v NA?
+-   Drop NAs (non-germinated), dead v alive v NA?
 
-- Mystery cleaning, logistic regression (y= dead or alive, x= quantitative, 0-100)
+-   Mystery cleaning, logistic regression (y= dead or alive, x= quantitative, 0-100)
 
-3\)
+Remove NR/S to isolate acorn germination data (tag num, acorn num)
+
+```{r}
+
+head(oak_data_clean)
+
+```
