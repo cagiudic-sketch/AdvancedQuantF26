@@ -56,10 +56,12 @@ oak_data<-  oak_data |>
   mutate(Num_germinated= as.numeric(Num_germinated)) |> 
   mutate(RCD=as.numeric(RCD))
 
+#convert NA seedling height to 0
+oak_data$Seedling_Ht_cm[is.na(oak_data$Seedling_Ht_cm)] <- 0
+
 #take one column per acorn num and tag num
 oak_data_clean<- oak_data |>    separate(Tag_Num, into = c("Tag_Num", "Acorn_Num"), sep= "A") |> mutate(Tag_Num= as.numeric(Tag_Num),
              Acorn_Num= as.numeric(Acorn_Num)) |> 
-  #mutate(Seedling_Ht_cm= case_when(Seedling_Ht_cm =NA ~0)) |> 
   mutate(Dead= case_when(Seedling_Ht_cm == 0 ~ "Dead",
                          Seedling_Ht_cm >0 ~ "Alive"))
 ```
@@ -73,13 +75,137 @@ acorn_data<- oak_data_clean |>
   filter(Oak_type== "A")
 
 #filter for the most recent tag observation
+acorn_data_recent <- acorn_data |> 
+  group_by(Tag_Num)  |> 
+  filter(Date == max(Date)) |> 
+  ungroup()
 
+```
 
+Find number of germinated acorns per tag
+
+```{r}
+#Find number of surviving acorns per tag (count tag number where seedling ht>0)
+acorn_data_count <- acorn_data_recent |> 
+  group_by(Tag_Num) |> 
+  mutate(Num_germinated = sum(Seedling_Ht_cm > 0, na.rm = TRUE)) |> 
+  ungroup()
+
+#Calculate germination rate per tag
+
+acorn_data_count<- acorn_data_count |> 
+  group_by(Tag_Num) |> 
+  mutate(Germination_rate= Num_germinated/3)
 ```
 
 Calculate germination rate per treatment
 
 ```{r}
-# num_germinated/3. NAs= 0 germinated
+ggplot(acorn_data_count) +
+  aes(x = Treatment, y= Germination_rate, fill= Treatment) + 
+  labs(x = "Treatment", y= "Germination rate") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  geom_boxplot(color= "#071A0B", outlier.colour = "red")
+```
+
+Summarize germination count per treatment
+
+```{r}
+germination_count<- acorn_data_count |> 
+  group_by(Treatment) |> 
+  summarize(Num_germinated_treatment= sum(Num_germinated))
+
+#bar plot
+ggplot(germination_count) +
+  aes(x = Treatment, y= Num_germinated_treatment, fill= Treatment) + 
+  labs(x = "Treatment", y= "Number germinated") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  geom_col(color= "#071A0B")
+```
+
+Average germination rate per treatment
+
+```{r}
+
+germination_avg<- acorn_data_count |> 
+  group_by(Treatment) |> 
+  summarize(avg_germinated_treatment= mean(Germination_rate)*100)
+
+
+#bar plot
+ggplot(germination_avg) +
+  aes(x = Treatment, y= avg_germinated_treatment, fill= Treatment) + 
+  labs(x = "Treatment", y= "Average germination rate (%)") +
+  scale_fill_manual(
+    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
+    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )+
+  scale_x_discrete(labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area"))+
+    #geom_text(aes(label =avg_germinated_treatment), vjust = -0.5) +
+  geom_col(color= "#071A0B")
+```
+
+### ANOVA
+
+Normality
+
+```{r}
+# Visually
+
+hist(acorn_data_count$Germination_rate, breaks = 5) # breaks codes for the number of bins
+plot(density(acorn_data_count$Germination_rate))
+
+ggplot(acorn_data_count, aes(x = Germination_rate)) + geom_histogram(binwidth = 3) # binwidth is the size of bins
+
+# Statistically with the Shapiro-Wilk test 
+shapiro.test(somedata$V2)
+```
+
+Specific tests for ANOVAs
+
+```{r}
+# Bartlett's Test for Homogeneity of Variance (only good with normal data) 
+bartlett.test(Germination_rate ~ Treatment, data = acorn_data_count)
+
+# Levene's Test for Homogeneity of Variance (okay with marginally-normal data)
+library(car)
+car::leveneTest(Germination_rate ~ Treatment, data = acorn_data_count)
+
+# Fligner-Killeen test: a non-parametric test which is very robust against departures from normality.
+fligner.test(Germination_rate ~ Treatment, data = acorn_data_count)
+```
+
+### 
+
+```{r}
+fit <- aov(Germination_rate ~ Treatment, data=acorn_data_count)
+
+germ_model <- lm(Germination_rate ~ Treatment, data=acorn_data_count)
+anova(germ_model)
+
+germ_model2 <- aov(Germination_rate ~ Treatment, data=acorn_data_count)
+```
+
+```{r}
+# Post-hoc test
+TukeyHSD(fit)
+
+## Plotting comparisons using the ggsignif package
+https://cran.r-project.org/web/packages/ggsignif/vignettes/intro.html
+ggplot(germ_model2, aes(x = Treatment, y = Germination_rate)) +
+  geom_boxplot() + # using `ggsignif` to display comparison of interest
+  geom_signif(
+    comparisons = list(c("versicolor", "virginica")),
+    map_signif_level = TRUE
+  )
 
 ```
