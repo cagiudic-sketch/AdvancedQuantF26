@@ -64,6 +64,8 @@ oak_data_clean<- oak_data |>    separate(Tag_Num, into = c("Tag_Num", "Acorn_Num
              Acorn_Num= as.numeric(Acorn_Num)) |> 
   mutate(Dead= case_when(Seedling_Ht_cm == 0 ~ "Dead",
                          Seedling_Ht_cm >0 ~ "Alive"))
+
+filter(!is.na(Num_germinated))
 ```
 
 **Total number of acorns should be 3 per tag number**
@@ -168,7 +170,6 @@ germination_count<- tag_germination |>
 germination_count<- germination_count |> 
   mutate(germination_dec= germination_rate/100)
 
-  
 
 ```
 
@@ -186,7 +187,7 @@ x = "Treatment", y= "Germination Rate (%)") +
     name = "Treatment"
   )+
     scale_x_discrete(labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area"))+
-  scale_y_continuous(labels = scales::percent, limits = c(0, 0.40)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.35)) +
   geom_col(color= "#071A0B")+
     geom_errorbar(aes(ymin = germination_dec - se_germ, ymax = germination_dec + se_germ), width = 0.15)+
   theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5), panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5))
@@ -195,13 +196,28 @@ x = "Treatment", y= "Germination Rate (%)") +
 
 Plot takeaways
 
--   Only 3/4 original treatments are represented (Dripline was only natural recruits)
+- Only 3/4 original treatments are represented (Dripline was only natural recruits)
 
--   No equal amounts of acorns due to some being seedlings (NR and S were removed for germination rate analysis)
+- No equal amounts of acorns due to some being seedlings (NR and S were removed for germination rate analysis)
 
--   If they're planted in the same general vicinity, there may not be a vast difference in water availability or other nutrients that would help them thrive
+- If they're planted in the same general vicinity, there may not be a vast difference in water availability or other nutrients that would help them thrive
 
--   The most notable difference would be amount of shade availability but all acorns seemed to have similar success (which is why we dive into seedling height)
+- The most notable difference would be amount of shade availability but all acorns seemed to have similar success (which is why we dive into seedling height)
+
+```{r}
+tag_germination<- tag_germination |> 
+  mutate(germination_rate= Num_germinated/Total_planted)
+  
+ggplot(tag_germination, aes(x = Treatment, y = germination_rate, group = as.character(Tag_Num), color=as.character(Tag_Num))) +
+  geom_line() +
+  geom_point()+
+  labs(x = "Treatment", y="Germination Rate (%)")
+  scale_color_manual(
+    values = c("AC" = "#06421C", "DT"= "lightblue", "OA"= "#7FB58F"),
+    labels = c("AC" = "Adult Canopy", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )
+```
 
 Other plot
 
@@ -236,6 +252,20 @@ Why are the number of acorns different per treatment?
 Make a summary table with treatment, \# of tags, \# of acorns planted, \# of acorns germinated
 
 ```{r}
+oak_data_clean |> 
+  select(Treatment, Tag_Num, Oak_type) |> 
+  group_by(Treatment, Oak_type) |> 
+  distinct() |> 
+  count()
+
+oak_data_clean |> 
+  select(Treatment, Tag_Num) |> 
+  group_by(Treatment) |> 
+  distinct() |> 
+  count()
+```
+
+```{r}
 treatment_sum<- tag_germination |> 
   group_by(Treatment) |> 
   summarize(tag_count=n(), total_germ_treat= sum(Num_germinated), total_planted_treat= sum(Total_planted), germination_rate= total_germ_treat/total_planted_treat*100)
@@ -261,7 +291,7 @@ acorn_data
 
 #number of acorns germinated per trial
 acorn_data <- acorn_data |> 
-  select(-Month) |> 
+  #select(-Month) |> 
   mutate(month_name = month(Date, label = TRUE))
 
 acorn_data$month_name[acorn_data$month_name == "Jan"] <- "Feb"
