@@ -1,0 +1,597 @@
+---
+title: "GIUDICE_RoughDraft_DroughtNetFinal"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+### Load your packages
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(readxl)
+library(dplyr)
+library(rstatix)
+library(ggpubr)
+```
+
+### Import Data
+
+```{r}
+SPAD_data_raw <- read_excel("DroughtNet_MCRS_Fall2025.xlsx", 
+    sheet = "SPAD")
+
+Size_data_raw <- read_excel("DroughtNet_MCRS_Fall2025.xlsx",
+    sheet = "ShrubSize") 
+
+StomCon_data_raw <- read_excel("DroughtNet_MCRS_Fall2025.xlsx", sheet = "StomatalConductance")
+
+DN_Blocks<- read.csv("DN_Blocks.csv")
+```
+
+### Summary Table
+
+|  |  |  |  |
+|----|----|----|----|
+|  | Hypothesis | Analysis | Results |
+| SPAD and seed source | There will be a significant difference between seed sources (inland vs coastal) in mean SPAD values. | One-way ANOVA | SPAD values differ significantly between the mesic and xeric seed sources (p = 6.485e-06). **Specifically, the mesic sources have a higher mean SPAD value as previously hypothesized.** |
+|  |  |  |  |
+| Stomatal Conductance, Species, and Water Treatment | There will be a significant difference between water treatment or species in mean stomatal conductance values. | Two-way ANOVA | **Significant difference in stomatal conductance across species and water treatment (p=0.016)** |
+|  |  |  |  |
+
+## Data Cleaning (SPAD)
+
+```{r}
+
+nrow(SPAD_data_raw)
+
+#Too many rows, clean up NAs
+SPAD_data <- SPAD_data_raw%>%
+  filter(!is.na(SPAD))
+
+#Check categories are correct
+unique(SPAD_data$Water_Treatment)
+unique(SPAD_data$Seed_Source)
+unique(SPAD_data$Species)
+
+#Remove NAs from Seed_source
+SPAD_data <- SPAD_data%>%
+  filter(!is.na(Seed_Source))
+
+
+#Select for necessary columns, remove columns filled with NAs (i.e. FLAG and Notes)
+
+SPAD_data <- SPAD_data%>%
+  select(Block_Number, Plot_Number, Water_Treatment, Seed_Source, Species, Leaf_Number, SPAD) 
+
+
+#change characters to numeric
+SPAD_data<- SPAD_data%>%
+  mutate(SPAD = as.numeric(SPAD))
+
+SPAD_data <- SPAD_data%>%
+  filter(SPAD != "NA",
+         Block_Number!= "NA", Plot_Number!= "NA", Water_Treatment!= "NA", Seed_Source!= "NA", Species!= "NA", Leaf_Number!= "NA")
+
+
+summary(SPAD_data$SPAD)
+```
+
+```{r}
+#Rename columns to match
+SPAD_data<- SPAD_data%>%
+  rename(Plant_seed_source = Seed_Source)
+
+
+DN_Blocks<- DN_Blocks%>%
+  rename(Plant_seed_source = Plot.Seed.Source)
+
+DN_Blocks<- DN_Blocks%>%
+  rename(Plot_seed_source = Plant_seed_source)
+
+
+
+DN_Blocks<- DN_Blocks%>%
+  rename(Water_Treatment = Plot.Water.Treatment)
+
+DN_Blocks<- DN_Blocks%>%
+  rename(Plot_Water_Treatment = Water_Treatment)
+
+#Change BACPIL to M
+SPAD_data<- SPAD_data%>%
+  mutate(Plant_seed_source = case_when(
+    Species == "BACPIL" ~ "M",
+    TRUE ~ Plant_seed_source))
+
+
+#Join DN blocks and SPAD_Data
+NewSPAD_Data <- left_join(SPAD_data, DN_Blocks, by = "Plot_Number")
+```
+
+```{r visualize}
+
+#full names of mesic and xeric
+NewSPAD_Data<- NewSPAD_Data%>%
+   mutate(Plant_seed_source = case_when( Plant_seed_source == "M" ~ "Mesic",
+          Plant_seed_source == "X" ~ "Xeric"))
+   
+#Visualize SPAD Data
+ggplot(NewSPAD_Data) + 
+  aes(x = Plant_seed_source, y = SPAD) + 
+  geom_boxplot()
+```
+
+```{r summarize}
+SPAD_data_summary <- SPAD_data %>%
+  group_by(Plant_seed_source)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+
+SPAD_data_summary<- SPAD_data_summary%>%
+  mutate(mean_SPAD = as.numeric(mean_SPAD))
+
+SPAD_data_summary
+
+SPAD_model <- lm(SPAD ~ Plant_seed_source + Block_Number, data = SPAD_data)
+
+SPAD_model
+```
+
+## Data Cleaning (Stomatal Conductance)
+
+```{r}
+# View data set
+StomCon_data<- StomCon_data_raw%>%
+  filter(!is.na(Stomatal_Conductance), Time!= "HH:MM")
+
+```
+
+```{r}
+# Clean dataset
+
+StomCon_data <- StomCon_data%>%
+  select(Block_Number, Plot_Number, Water_Treatment, Seed_Source, Species, Leaf_Number, Stomatal_Conductance) 
+
+#Rename columns and join with DN blocks
+StomCon_data<- StomCon_data%>%
+  rename(Plant_seed_source = Seed_Source)
+
+#Change BACPIL to M
+StomCon_data<- StomCon_data%>%
+  mutate(Plant_seed_source = case_when(
+    Species == "BACPIL" ~ "M",
+    TRUE ~ Plant_seed_source))
+
+NewStom_Data <- left_join(StomCon_data, DN_Blocks, by = "Plot_Number")
+
+#full names of mesic and xeric
+NewStom_Data<- NewStom_Data%>%
+   mutate(Plant_seed_source = case_when( Plant_seed_source == "M" ~ "Mesic",
+          Plant_seed_source == "X" ~ "Xeric"))
+
+#change stomatal conductance to numeric
+NewStom_Data<- NewStom_Data%>%
+  mutate(Stomatal_Conductance = as.numeric(Stomatal_Conductance))
+
+#Fix water treatment values: WA, RS, A
+unique(NewStom_Data$Water_Treatment)
+
+NewStom_Data<- NewStom_Data%>%
+  mutate(Water_Treatment = case_when(
+    Water_Treatment == "WS" ~ "WA",
+    Water_Treatment == "RA" ~ "RS",
+    TRUE ~ Water_Treatment  # Keep other values as is
+  ))
+
+unique(NewStom_Data$Water_Treatment)
+```
+
+## One-way ANOVA Analysis (SPAD)
+
+Histogram
+
+```{r}
+
+
+ggplot(NewSPAD_Data) +
+  aes(x= SPAD)+
+  geom_histogram()+
+  facet_wrap(Plant_seed_source~.)+
+  ylab("Count")+
+  xlab("SPAD Values")
+
+```
+
+Boxplot
+
+Visualize result: mean SPAD potentially higher in mesic than in xeric plants
+
+```{r}
+ggplot(NewSPAD_Data) + 
+  aes(x = Plant_seed_source, y = SPAD, fill =Plant_seed_source) + 
+  geom_boxplot()+
+  scale_fill_manual(values= c( "Mesic"="#257335", "Xeric"="#8ABD95"))+
+  ylab("SPAD Values")+
+  xlab("Seed Source")
+
+```
+
+```{r}
+#summarize mean by seed source
+SPADNew_data_summary <- NewSPAD_Data %>%
+  group_by(Plant_seed_source)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+SPADNew_data_summary
+#plot the relationship
+ggplot(SPADNew_data_summary, aes(x= Plant_seed_source, y=mean_SPAD, fill =Plant_seed_source)) +
+  geom_col(width = 0.5, color= "#0C2E0F") + 
+  geom_errorbar(aes(ymin= mean_SPAD- se_SPAD, ymax= mean_SPAD + se_SPAD), width=0.2)+
+  scale_fill_manual(values= c( "Mesic"="#257335", "Xeric"="#8ABD95"))+
+  theme(legend.title = element_blank())+
+  ylab("Mean SPAD Values")+
+  xlab("Seed Source")
+
+
+```
+
+(As seen in data cleaning, the data is not normal so a kruskal-wallis test must be done instead of ANOVA)\
+SPAD values differ significantly between the mesic and xeric seed sources (p = 6.485e-06). **Specifically, the mesic sources have a higher mean SPAD value as previously hypothesized.**
+
+```{r}
+result <- kruskal.test(SPAD ~ Plant_seed_source, data = NewSPAD_Data)
+print(result)
+
+#data table
+my_data_frame <- data.frame(
+  SPAD= c("Mean SPAD"),
+  Mesic = c("28.19"),
+  Xeric = c("21.65"),
+  df = c("1"),
+  P = c("6.485e-06"))
+
+colnames(my_data_frame) [colnames(my_data_frame) == "NULL"] <- " "
+
+print(my_data_frame)
+
+    knitr:: kable(my_data_frame)
+```
+
+Summarize water treatment
+
+```{r}
+SPADNew_data_sumseedwater <- NewSPAD_Data %>%
+  group_by(Plant_seed_source, Water_Treatment)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+SPADNew_data_sumseedwater
+
+ggplot(SPADNew_data_sumseedwater, aes(x= Plant_seed_source, y=mean_SPAD, fill = Water_Treatment)) +
+  geom_col(stat= "identity", position= "dodge", width = 0.5, color = "#072538") + 
+  geom_errorbar(aes(ymin= mean_SPAD- se_SPAD, ymax= mean_SPAD + se_SPAD), position= position_dodge(width = 0.5), width = 0.25)+
+  scale_fill_manual(values= c( "A"="#46ABDB", "RS"="#236896", "WA"= "#184569"))+
+  labs(fill = "Water Treatment")+
+  ylab("Mean SPAD Values")+
+  xlab("Seed Source")
+
+```
+
+```{r}
+#Summarize to include water treatment
+SPADNew_data_watersummary <- NewSPAD_Data %>%
+  group_by(Water_Treatment)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+
+knitr::kable(SPADNew_data_watersummary)
+#new table
+Seed_treatment<- SPADNew_data_sumseedwater
+colnames(Seed_treatment) [colnames(Seed_treatment) == "Plant_seed_source"] <- "Seed Source"
+colnames(Seed_treatment) [colnames(Seed_treatment) == "Water_Treatment"]<- "Water Treatment"
+colnames(Seed_treatment)[colnames(Seed_treatment) == "mean_SPAD"]<- "Mean SPAD"
+colnames(Seed_treatment)[colnames(Seed_treatment) == "sd_SPAD"]<- "SD"
+colnames(Seed_treatment)[colnames(Seed_treatment) == "se_SPAD"]<- "SE"
+
+Seed_treatment <- Seed_treatment[, c(setdiff(names(Seed_treatment), "n"), "n")]
+
+
+ knitr:: kable(Seed_treatment)
+    
+
+```
+
+```{r}
+ggplot(SPADNew_data_watersummary, aes(x= Water_Treatment, y=mean_SPAD, fill =Water_Treatment)) +
+  geom_col(width = 0.5) + 
+  geom_errorbar(aes(ymin= mean_SPAD- se_SPAD, ymax= mean_SPAD + se_SPAD), width=0.2)+
+  ylab("Mean SPAD Values")+
+  xlab("Water Treatment")
+
+```
+
+```{r}
+ggplot(SPADNew_data_sumseedwater, aes(x = Water_Treatment, y = mean_SPAD, group = Plant_seed_source, color = Plant_seed_source)) +
+geom_point(aes(color= Plant_seed_source, shape = Plant_seed_source))+
+geom_line(aes(linetype= Plant_seed_source)) +
+  scale_color_manual(name = "Seed Source", values= c( "Mesic"="#257335", "Xeric"="#8ABD95"))+
+labs(
+color= "Seed Source",
+shape= "Seed Source",
+linetype= "Seed Source",
+x = "Water treatment",
+y = "SPAD Values") +
+theme_minimal()
+
+```
+
+Separate by seed source
+
+```{r}
+#M filter
+M_SPAD<- NewSPAD_Data%>%
+  filter(Plant_seed_source == "M")
+
+M_SPAD
+#summarize
+M_summary <- M_SPAD %>%
+  group_by(Water_Treatment)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+
+#X filter
+X_SPAD<- NewSPAD_Data%>%
+  filter(Plant_seed_source == "X")
+
+X_SPAD
+#summarize
+X_summary <- X_SPAD %>%
+  group_by(Water_Treatment)%>%
+  dplyr::summarize(mean_SPAD = mean(as.numeric(SPAD), na.rm=TRUE), sd_SPAD = sd(SPAD, na.rm= TRUE), n = n(), se_SPAD = sd_SPAD/sqrt(n)) %>%
+  mutate_at(vars(mean_SPAD, sd_SPAD, se_SPAD), .funs = round, 2)
+
+knitr::kable(SPADNew_data_sumseedwater)
+
+```
+
+Kruskal wallis-test to find differences in SPAD within seed sources across water treatment
+
+**Significant difference between mean SPAD values across water treatments within Xeric treatments.**
+
+```{r}
+#Mesic not significant p>0.05
+Mresult <- kruskal.test(SPAD ~ Water_Treatment + Block_Number, data = M_SPAD)
+print(Mresult)
+
+#Xeric significant p-value = 0.001379
+Xresult <- kruskal.test(SPAD ~ Water_Treatment + Block_Number, data = X_SPAD)
+print(Xresult)
+
+
+```
+
+Graph Mesic
+
+```{r}
+ggplot(M_SPAD)+
+  aes(x= Water_Treatment, y= SPAD, color= Water_Treatment)+
+  geom_boxplot()+
+  ylab("SPAD values")+
+  xlab("Water Treatment")+
+  labs(title = "SPAD Values Across Water Treatments for Mesic Seed Sources")
+
+```
+
+Graph Xeric
+
+```{r}
+ggplot(X_SPAD)+
+  aes(x= Water_Treatment, y= SPAD, color= Water_Treatment)+
+  geom_boxplot()+
+  ylab("SPAD values")+
+  xlab("Water Treatment")+
+  labs(title = "SPAD Values Across Water Treatments for Xeric Seed Sources")
+
+```
+
+Species graph
+
+```{r}
+ggplot(NewSPAD_Data)+
+  aes(x= Species, y= SPAD, color= Water_Treatment)+
+  geom_boxplot()+
+  ylab("SPAD values")+
+  xlab("Species")+
+  labs(title = "SPAD Values Across Water Treatments per Species")
+
+```
+
+Two-way ANOVA for SPAD, water treatment and species
+
+```{r}
+model_SPAD_lm <- lm(SPAD ~ Species*Water_Treatment + Block_Number, NewSPAD_Data)
+anova(model_SPAD_lm)
+
+
+model_SPAD_aov <- aov(SPAD ~ Species*Water_Treatment + Block_Number, NewSPAD_Data)
+summary(model_SPAD_aov)
+
+
+TukeyHSD(model_SPAD_aov)
+```
+
+Two-way SPAD results:
+
+**Significant difference between SPAD values across species and water treatment (p=0.003).**
+
+Two-way ANOVA for SPAD, water, and seed source
+
+```{r}
+model_SPAD_lme <- lm(SPAD ~ Plant_seed_source*Water_Treatment + Block_Number, NewSPAD_Data)
+anova(model_SPAD_lme)
+
+
+model_SPAD_aov2 <- aov(SPAD ~ Plant_seed_source*Water_Treatment, NewSPAD_Data)
+summary(model_SPAD_aov2)
+
+
+TukeyHSD(model_SPAD_aov2)
+
+
+```
+
+Results table
+
+```{r}
+#data table
+
+anova_df <- as.data.frame(summary(model_SPAD_aov2)[[1]])
+anova_df
+
+rownames(anova_df) <- c("Seed Source", "Water Treatment", "Seed Source x Water Treatment", "Residuals")
+
+colnames(anova_df) [colnames(anova_df) == "Pr(>F)"] <- "P-Value"
+
+anova_df <- anova_df[-4, ]  
+
+knitr::kable(anova_df, digits = 4)
+```
+
+## Two-way ANOVA Analysis (Stomatal Conductance)
+
+Visualize relationship across water treatment and species
+
+```{r}
+
+head(NewStom_Data)
+
+ggplot(NewStom_Data) +
+  aes(x = Species, y = Stomatal_Conductance, fill = Water_Treatment) + 
+  geom_boxplot()
+```
+
+Check assumptions
+
+```{r}
+
+# Build the linear model
+model  <- lm(Stomatal_Conductance ~ Species * Water_Treatment + Block_Number, data = NewStom_Data)
+
+plot(model, which = 2)
+
+# Create a QQ plot of residuals
+ggqqplot(residuals(model))
+```
+
+Homogeneity test
+
+```{r}
+plot(model, which = 1)
+
+NewStom_Data %>% rstatix::levene_test(Stomatal_Conductance ~ Species*Water_Treatment + Block_Number)
+```
+
+Statistical Test
+
+Results: **Significant difference in stomatal conductance in water treatment as well as among species (p=0.003) and water treatment (p=0.016)**
+
+Significant: SALMEL-BACPIL (0.003), SALMEL-ERIFAS (p=0.00006).
+
+Significant: WA-RS (p=0.006)
+
+```{r}
+
+NewStom_Data
+model_stom_lm <- lm(Stomatal_Conductance ~ Species*Water_Treatment + Block_Number, NewStom_Data)
+anova(model_stom_lm)
+
+
+model_stom_aov <- aov(Stomatal_Conductance ~ Species*Water_Treatment + Block_Number, NewStom_Data)
+summary(model_stom_aov)
+
+
+TukeyHSD(model_stom_aov) # does work
+
+#data table
+
+anova2_df <- as.data.frame(summary(model_stom_aov)[[1]])
+anova2_df
+
+colnames(anova2_df) [colnames(anova2_df) == "Pr(>F)"] <- "P-Value"
+
+anova2_df <- anova2_df[-5, ]  
+anova2_df <- anova2_df[-3, ]
+anova2_df
+rownames(anova2_df) <- c("Species", "Water Treatment", "Species x Water Treatment")
+
+
+knitr::kable(anova2_df, digits = 4)
+```
+
+Post-Hoc
+
+```{r}
+TukeyHSD(model_stom_aov)
+```
+
+Summary
+
+```{r}
+stom_summary <- NewStom_Data %>% 
+  group_by(Water_Treatment, Species) %>% 
+  summarise(
+    mean = mean(Stomatal_Conductance), 
+    se = sd(Stomatal_Conductance)/ sqrt(length(Stomatal_Conductance)))
+stom_summary
+
+stom_summary<- stom_summary%>%
+mutate(Species = case_when(Species == "SBaccharis pilularis" ~ "Baccharis pilularis", Species= TRUE))
+
+stom_summary
+```
+
+PlotNewStom_Data
+
+```{r}
+ggplot(stom_summary) + 
+  aes(x = Species, y = mean, fill = Water_Treatment) + 
+  geom_col() + 
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2)
+
+stom_summary<- stom_summary%>%
+mutate(Species = case_when( Species == "ERIFAS" ~ "Eriogonum fasciculatum",
+          Species == "SALMEL" ~ "Salvia mellifera",
+          Species == "BACPIL" ~ "Baccharis pilularis"))
+
+stom_summary
+
+ggplot(stom_summary) + 
+  aes(x = Species, y = mean, fill = Water_Treatment) + 
+  geom_col(position = "dodge", color= "#030E17") + 
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), position = position_dodge(0.9), width = 0.2)+
+  scale_fill_manual(values= c( "A"="#193B4A", "RS"="#2B7799", "WA"= "#06213B"))+
+  labs(fill = "Water Treatment")+
+  ylab("Mean Stomatal Conductance (mmol/m^2)")+
+  xlab("Species")
+
+
+
+NewStom_Data %>% 
+  ggplot() +
+  aes(x = Species, y = Stomatal_Conductance, fill = Water_Treatment) +
+  stat_summary(fun = mean, geom = "col", position = "dodge")+
+  stat_summary(fun.data = mean_se, geom = "errorbar", 
+               position = position_dodge(0.9), width = 0.1)
+```
+
+```{r}
+
+sum<-NewSPAD_Data%>%
+  group_by(Plot_Number, Block_Number)%>%
+  count()
+
+sum
+```

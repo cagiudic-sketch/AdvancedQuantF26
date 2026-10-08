@@ -71,6 +71,12 @@ oak_data_clean<- oak_data |>    separate(Tag_Num, into = c("Tag_Num", "Acorn_Num
 Filter for acorns only
 
 ```{r}
+
+oak_data_clean |> 
+  group_by(Treatment) |> 
+  distinct(Tag_Num) |> 
+  count()
+
 acorn_data<- oak_data_clean |> 
   filter(Oak_type== "A")
 
@@ -80,6 +86,37 @@ acorn_data_recent <- acorn_data |>
   filter(Date == max(Date)) |> 
   ungroup()
 
+acorn_data |> 
+  group_by(Tag_Num, Date) |> 
+  mutate(row_id = row_number()) |> 
+  ungroup() |> 
+  complete(Tag_Num, row_id = 1:3)
+
+df_expanded <- acorn_data_recent |> 
+  group_by(Tag_Num) |> 
+  mutate(row_id = row_number()) |> 
+  ungroup() |> 
+  complete(Tag_Num, row_id = 1:3) |> 
+  group_by(Tag_Num) |> 
+  fill(Date, .direction = "down") 
+```
+
+Checking number of acorns per tag
+
+```{r}
+
+df_expanded$Seedling_Ht_cm[is.na(df_expanded$Seedling_Ht_cm)] <- 0
+
+df_expanded_count <- df_expanded |> 
+  group_by(Tag_Num, Date) |> 
+  mutate(Num_germinated = sum(Seedling_Ht_cm > 0, na.rm = TRUE)) |> 
+  ungroup()
+
+df_expanded_count |> 
+  group_by(Treatment) |> 
+  distinct() |> 
+  count()
+
 ```
 
 Find number of germinated acorns per tag
@@ -87,7 +124,7 @@ Find number of germinated acorns per tag
 ```{r}
 #Find number of surviving acorns per tag (count tag number where seedling ht>0)
 acorn_data_count <- acorn_data_recent |> 
-  group_by(Tag_Num) |> 
+  group_by(Tag_Num, Date) |> 
   mutate(Num_germinated = sum(Seedling_Ht_cm > 0, na.rm = TRUE)) |> 
   ungroup()
 
@@ -96,6 +133,8 @@ acorn_data_count <- acorn_data_recent |>
 acorn_data_count<- acorn_data_count |> 
   group_by(Tag_Num) |> 
   mutate(Germination_rate= Num_germinated/3)
+
+acorn_data_count$Total_planted<- 3
 ```
 
 Calculate germination rate per treatment
@@ -112,114 +151,188 @@ ggplot(acorn_data_count) +
   geom_violin(color= "#071A0B", outlier.colour = "red")
 ```
 
-Summarize germination count per treatment
-
-```{r}
-germination_count<- acorn_data_count |> 
-  group_by(Treatment) |> 
-  summarize(Num_germinated_treatment= sum(Num_germinated))
-
-#bar plot
-ggplot(germination_count) +
-  aes(x = Treatment, y= Num_germinated_treatment, fill= Treatment) + 
-  labs(x = "Treatment", y= "Number germinated") +
-  scale_fill_manual(
-    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
-    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
-    name = "Treatment"
-  )+
-  geom_col(color= "#071A0B")
-
-#see if same number of planted acorns per treatment
-# number germinated/ actual acorns planted per treatment
-```
-
-Average germination rate per treatment
+**Summarize Germination rate per treatment**
 
 ```{r}
 
-germination_avg<- acorn_data_count |> 
-  group_by(Treatment) |> 
-  summarize(avg_germinated_treatment= mean(Germination_rate)*100)
-
-
-#bar plot
-ggplot(germination_avg) +
-  aes(x = Treatment, y= avg_germinated_treatment, fill= Treatment) + 
-  labs(x = "Treatment", y= "Average germination rate (%)") +
-  scale_fill_manual(
-    values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
-    labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
-    name = "Treatment"
-  )+
-  scale_x_discrete(labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area"))+
-    #geom_text(aes(label =avg_germinated_treatment), vjust = -0.5) +
-  geom_col(color= "#071A0B")
-```
-
-Germination totals attempt #2
-
-See if same number of planted acorns per treatment
-
-```{r}
-acorn_data_count |> 
-  group_by(Treatment) |> 
-  distinct(Tag_Num) |> 
-  count()
-
-#different amount of tags (acorns) per treatment
-
-oak_data_clean |> 
-  group_by(Treatment) |> 
-  distinct(Tag_Num) |> 
-  count()
-```
-
-Number germinated/ actual acorns planted per treatment
-
-```{r}
-
-#acorn summary table
-acorn_data_count2<- acorn_data_count |> 
-  select(Date, Block, Tag_Num, Oak_type, Treatment, Num_germinated, Germination_rate) |> 
+tag_germination<- acorn_data_count |> 
+  select(Date, Tag_Num, Treatment, Num_germinated, Total_planted) |> 
   distinct()
 
-germination_count_treat<- acorn_data_count2 |> 
-  group_by(Treatment) |> 
-  summarize(Num_germinated_treatment= sum(Num_germinated))
 
-acorn_treat_totals<- acorn_data_count |> 
+#summarize total germinated, planted and germination rate
+germination_count<- tag_germination |> 
   group_by(Treatment) |> 
-  distinct(Tag_Num) |> 
-  count()
+  summarize(n=n(), total_germ_treat= sum(Num_germinated), total_planted_treat= sum(Total_planted), germination_rate= total_germ_treat/total_planted_treat*100, se_germ = sqrt((germination_rate/100) * (1 - (germination_rate/100)) / n))
 
-acorn_data_treatment<- acorn_data_count |> 
-  left_join(acorn_treat_totals, by= "Treatment")
+germination_count<- germination_count |> 
+  mutate(germination_dec= germination_rate/100)
 
-acorn_data_treatment |> 
-  group_by(Treatment) |> 
-  summarize(total_acorn= n*3, germinate_treat= Num_germinated) |> 
-  mutate(acorn_treatment= Num_germinated)
+  
 
 ```
 
-Plot
+Bar plot of germination rate per treatment + error bars
 
 ```{r}
 #bar plot
-ggplot(germination_avg) +
-  aes(x = Treatment, y= avg_germinated_treatment, fill= Treatment) + 
-  labs(x = "Treatment", y= "Average germination rate (%)") +
+ggplot(germination_count) +
+  aes(x = Treatment, y= germination_dec, fill= Treatment) + 
+  labs(title = "Acorn Germination Rate by Treatment", 
+x = "Treatment", y= "Germination Rate (%)") +
   scale_fill_manual(
     values = c("AC" = "#052913", "DL" = "#125D6E", "DT"= "#6E6E12", "OA"= "#64875C"),
     labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area" ),
     name = "Treatment"
   )+
+    scale_x_discrete(labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area"))+
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.40)) +
+  geom_col(color= "#071A0B")+
+    geom_errorbar(aes(ymin = germination_dec - se_germ, ymax = germination_dec + se_germ), width = 0.15)+
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5), panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5))
+
+```
+
+Plot takeaways
+
+-   Only 3/4 original treatments are represented (Dripline was only natural recruits)
+
+-   No equal amounts of acorns due to some being seedlings (NR and S were removed for germination rate analysis)
+
+-   If they're planted in the same general vicinity, there may not be a vast difference in water availability or other nutrients that would help them thrive
+
+-   The most notable difference would be amount of shade availability but all acorns seemed to have similar success (which is why we dive into seedling height)
+
+Other plot
+
+```{r}
+#plot with dodge bars (germinated vs not)
+germination_long <- germination_count |> 
+  rename(Germinated= total_germ_treat,
+         Planted= total_planted_treat) |> 
+  mutate(Dead=Planted-Germinated) |> 
+  pivot_longer(cols = c(Germinated, Planted, Dead), 
+               names_to = "Status", 
+               values_to = "Amount") |> 
+  filter(Status!= "Planted") 
+  
+  germination_long$Status[germination_long$Status == "Dead"] <- "Not Germinated"
+
+
+ggplot(germination_long) +
+  aes(x = Treatment, y= Amount, fill= Status) + 
+  labs(x = "Treatment", y= "Number of Acorns") +
+  scale_fill_manual(values = c("Germinated" = "#64875C","Not Germinated" = "#593633", name = "Status"))+
   scale_x_discrete(labels = c("AC" = "Adult Canopy", "DL" = "Dripline", "DT"= "Downed Tree", "OA"= "Open Area"))+
-  #geom_text(aes(label =avg_germinated_treatment), vjust = -0.5) +
-  geom_col(color= "#071A0B")
+  geom_col(color= "#071A0B", position="dodge")
+```
+
+Why are the number of acorns different per treatment?
+
+```{r}
+
+```
+
+Make a summary table with treatment, \# of tags, \# of acorns planted, \# of acorns germinated
+
+```{r}
+treatment_sum<- tag_germination |> 
+  group_by(Treatment) |> 
+  summarize(tag_count=n(), total_germ_treat= sum(Num_germinated), total_planted_treat= sum(Total_planted), germination_rate= total_germ_treat/total_planted_treat*100)
+
+#make into a nice table
+knitr::kable(treatment_sum)
+
+#new table
+Treatment_germination_summary<- treatment_sum
+colnames(Treatment_germination_summary) [colnames(Treatment_germination_summary) == "tag_count"] <- "Number of Tags"
+colnames(Treatment_germination_summary) [colnames(Treatment_germination_summary) == "total_germ_treat"]<- "Number of Germinated Acorns"
+colnames(Treatment_germination_summary)[colnames(Treatment_germination_summary) == "total_planted_treat"]<- "Number of Planted Acorns"
+colnames(Treatment_germination_summary)[colnames(Treatment_germination_summary) == "germination_rate"]<- "Germination Rate"
+
+
+ knitr:: kable(Treatment_germination_summary)
+```
+
+Germination rate across time
+
+```{r}
+acorn_data
+
+#number of acorns germinated per trial
+acorn_data <- acorn_data |> 
+  select(-Month) |> 
+  mutate(month_name = month(Date, label = TRUE))
+
+acorn_data$month_name[acorn_data$month_name == "Jan"] <- "Feb"
+
+#summarize germination rate per treatment per month
+#convert all dead to 0
+acorn_data_count2 <- acorn_data |> 
+  group_by(Tag_Num, month_name) |> 
+  mutate(Num_germinated = sum(Seedling_Ht_cm > 0, na.rm = TRUE)) |> 
+  ungroup()
+
+acorn_data_count2$Total_planted<- 3
+
+tag_germination2<- acorn_data_count2 |> 
+  select(month_name, Tag_Num, Treatment, Num_germinated, Total_planted) |> 
+  distinct()
+
+germination_count2<- tag_germination2 |> 
+  group_by(Treatment, month_name) |> 
+  summarize(total_germ_treat= sum(Num_germinated), total_planted_treat= sum(Total_planted), germination_rate= total_germ_treat/total_planted_treat*100)
+
+```
+
+Check how many tags per month
+
+```{r}
+acorn_data_count2 |> 
+  select(month_name, Tag_Num) |> 
+  distinct() |> 
+  group_by(month_name) |> 
+  count()
+```
+
+Graph month and treatment
+
+```{r}
+month_order <- c("Jan", "Feb", "Mar", "Apr", "May")
+
+germination_count2$month_name <- factor(germination_count2$month_name, levels = month_order)
+
+ggplot(germination_count2, aes(x = month_name, y = germination_rate, group = Treatment, color=Treatment)) +
+  geom_line() +
+  geom_point()+
+  labs(x = "Month", y="Survival Rate (%)")+
+  scale_color_manual(
+    values = c("AC" = "#06421C", "DT"= "lightblue", "OA"= "#7FB58F"),
+    labels = c("AC" = "Adult Canopy", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )
+```
+
+Try
+
+```{r}
+#ggplot(germination_count2, aes(x = total_planted_treat, y = total_germ_treat, group = Treatment, color=Treatment)) +
+  geom_line() +
+  geom_point()+
+  labs(x = "Total Planted", y="Total Germinated")+
+  scale_color_manual(
+    values = c("AC" = "#06421C", "DT"= "lightblue", "OA"= "#7FB58F"),
+    labels = c("AC" = "Adult Canopy", "DT"= "Downed Tree", "OA"= "Open Area" ),
+    name = "Treatment"
+  )
 ```
 
 ### GLIM
 
 Binomial distribution – 1 acorn per row, germ vs not
+
+```{r}
+head(acorn_data_count)
+
+#make 3 rows per tag, those w seedling height of 0 --> dead
+```
